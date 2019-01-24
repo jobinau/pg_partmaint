@@ -77,12 +77,7 @@ def prepareSQL(sql):
     return (sql)
 
 def preformatSQL(sql,oid,colname,coltype):
-# SELECT 'CREATE TABLE emp_'||to_char(max + (interval '1 month'*b),'YYYY_MM')||' PARTITION OF emp FOR VALUES FROM ('''||max + (interval '1 month'*b)||''') TO ('''||max + (interval '1 month'*(b+1))||''')' FROM
-# (SELECT max(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+5,10)::date)
-# FROM pg_catalog.pg_class c join pg_catalog.pg_inherits i on c.oid=i.inhrelid
-# WHERE i.inhparent = 16556) a CROSS JOIN generate_series(0,5,1) b;
     interval = getInterVal()
-
     sql = ("SELECT 'CREATE TABLE " + str(args.table) + "_p'||to_char(max + (interval '" + interval + "'*b),'YYYY_MM')||' PARTITION OF " + str(args.table) +
     " FOR VALUES FROM ('''||max + (interval '" + interval + "'*b)||''') TO ('''||max + (interval '" + interval + "'*(b+1))||''')' AS ddl FROM " +
     "(SELECT max(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+5,10)::date) " +
@@ -90,16 +85,7 @@ def preformatSQL(sql,oid,colname,coltype):
     "WHERE i.inhparent = " + str(oid) +") a CROSS JOIN generate_series(0," + str(args.premake) +",1) b")
     return sql
 
-#Get the Indexes in a Dictionary.
-def getIdxDict():
-    print("Quering the Database...")
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(sql)
-    index_list = cur.fetchall()
-    cur.close()
-    print("Number of Indexes are: " + str(len(index_list)))
-    return index_list
-
+#Prepare a Dictionary of DDLs for Partitioning.
 def preparePartitions():
     print("Preparing Partitions...")
     sql = """SELECT c.oid,a.attname, t.typname
