@@ -84,7 +84,7 @@ def preformatSQL(sql,oid,colname,coltype):
     interval = getInterVal()
 
     sql = ("SELECT 'CREATE TABLE " + str(args.table) + "_p'||to_char(max + (interval '" + interval + "'*b),'YYYY_MM')||' PARTITION OF " + str(args.table) +
-    " FOR VALUES FROM ('''||max + (interval '" + interval + "'*b)||''') TO ('''||max + (interval '" + interval + "'*(b+1))||''')' FROM " +
+    " FOR VALUES FROM ('''||max + (interval '" + interval + "'*b)||''') TO ('''||max + (interval '" + interval + "'*(b+1))||''')' AS ddl FROM " +
     "(SELECT max(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+5,10)::date) " +
     "FROM pg_catalog.pg_class c join pg_catalog.pg_inherits i on c.oid=i.inhrelid " +
     "WHERE i.inhparent = " + str(oid) +") a CROSS JOIN generate_series(0," + str(args.premake) +",1) b")
@@ -111,7 +111,9 @@ def preparePartitions():
     cur = conn.cursor()
     sql = prepareSQL(sql)
     cur.execute(sql)
-    print(sql)
+    if cur.rowcount < 1 :
+       print("ERROR : Unable to locate a partitioned table \"" + str(args.table) + "\"")
+       sys.exit()
     attr = cur.fetchone()
     oid = attr[0]
     colname = attr[1]
@@ -120,11 +122,11 @@ def preparePartitions():
     cur.close()
     sql = preformatSQL(sql,oid,colname,coltype)
     print(sql)
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(sql)
-    attr = cur.fetchone()
-    print(attr)
-    cur.close();
+    dicDDLs = cur.fetchall()
+    cur.close()
+    return dicDDLs
 
 
 #generate DDL statements
@@ -163,8 +165,8 @@ def genStmnts(index_list):
 #print DDLs to terminal (stdout)
 def printDDLs(index_list):
     for o in index_list:
-        for i in range(1,len(o)-12):
-            print(o['DDL'+str(i)])
+		#print(o)
+		print(o['ddl']+';')
 
 def writeDDLfile(index_list,ddlfile):
     fd = open(ddlfile, 'w')
@@ -219,8 +221,8 @@ if __name__ == "__main__":
         print("ERROR : Interval type specified is not correct")
     else:
         print(interval)
-    preparePartitions()
-    # index_list = getIdxDict()
+
+    index_list = preparePartitions()
     # genStmnts(index_list)
 
     #if user specified the --displayddl option
