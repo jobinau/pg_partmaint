@@ -129,43 +129,9 @@ def preparePartitions():
     return dicDDLs
 
 
-#generate DDL statements
-def genStmnts(index_list):
-    print("Generating DDL Statements...")
-    for o in index_list:
-        #print(o['uks'])
-        if o['indisprimary'] == False and o['fks'] == None and o['uks'] ==None  :
-            idef = o['inddef']
-            dupIndx = idef[0:idef.find('INDEX')+5]+" CONCURRENTLY "+o['index_name']+"_bk"+idef[idef.find('INDEX')+6+len(o['index_name']):]
-            #print(dupIndx)
-            o['DDL1'] = dupIndx
-            dropIdx = "DROP INDEX \"" + o['nspname'] + "\"." + o['index_name']
-            #print(dropIdx)
-            o['DDL2'] = dropIdx
-            renIndx = "ALTER INDEX \"" + o['nspname'] + "\"." + o['index_name'] + "_bk RENAME TO " + o['index_name']
-            #print(renIndx)
-            o['DDL3'] = renIndx
-        elif o['indisprimary'] == True and o['fks'] == None and o['uks'] ==None :
-            idef = o['inddef']
-            dupIndx = idef[0:idef.find('INDEX')+5]+" CONCURRENTLY "+o['index_name']+"_bk"+idef[idef.find('INDEX')+6+len(o['index_name']):]
-            o['DDL1'] = dupIndx
-            #print(dupIndx)
-            renIndx = "ALTER TABLE \"" + o['nspname'] + "\"." + o['table_name'] + " DROP CONSTRAINT " + o['index_name'] + ", ADD CONSTRAINT " \
-                + o['index_name'] + " PRIMARY KEY USING INDEX " + o['index_name'] + "_bk"
-            o['DDL2'] = renIndx
-        elif o['uks'] == 1 and o['fks'] == None :
-            idef = o['inddef']
-            dupIndx = idef[0:idef.find('INDEX')+5]+" CONCURRENTLY "+o['index_name']+"_bk"+idef[idef.find('INDEX')+6+len(o['index_name']):]
-            o['DDL1'] = dupIndx
-            renIndx = "ALTER TABLE \"" + o['nspname'] + "\"." + o['table_name'] + " DROP CONSTRAINT " + o['index_name'] + ", ADD CONSTRAINT " \
-                + o['index_name'] + " UNIQUE USING INDEX " + o['index_name'] + "_bk"
-            o['DDL2'] = renIndx
-
-
 #print DDLs to terminal (stdout)
 def printDDLs(index_list):
     for o in index_list:
-		#print(o)
 		print(o['ddl']+';')
 
 def writeDDLfile(index_list,ddlfile):
@@ -185,27 +151,26 @@ def writeIndexTSV(index_list,tsvfile):
         fd1.write(strtTime.strftime('%Y-%m-%d %H:%M:%S')+"\t"+o['nspname']+"."+o['table_name']+"."+o['index_name']+"\t"+str(o['iratio'])+"\t"+str(o['idxsize'])+"\n")
     fd1.close()
 
-def executeDDLs(index_list):
+def executeDDLs(dicDDLs):
     if args.errorlog:
         fd = open(args.errorlog,'w')
     old_isolation_level = conn.isolation_level
     conn.set_isolation_level(0)
-    for o in index_list:
-        for i in range(1,len(o)-12):
-            strDDL = o['DDL'+str(i)]
-            try:
-                cur = conn.cursor()
-                print("Executing :" + strDDL)
-                cur.execute(strDDL)
-                conn.commit()
-                cur.close()
-            except psycopg2.Error as e:
-                print("Statement Execution Error :")
-                print(e)
-                if args.errorlog:
-                    fd.write(strDDL + str(e))
-                if args.quitonerror :
-                    sys.exit(1)
+    for o in dicDDLs:
+        strDDL = o['ddl']
+        try:
+            cur = conn.cursor()
+            print("Executing :" + strDDL)
+            cur.execute(strDDL)
+            conn.commit()
+            cur.close()
+        except psycopg2.Error as e:
+            print("Statement Execution Error :")
+            print(e)
+            if args.errorlog:
+                fd.write(strDDL + str(e))
+            if args.quitonerror :
+                sys.exit(1)
     conn.set_isolation_level(old_isolation_level)
     if args.errorlog:
         fd.close()
@@ -215,22 +180,21 @@ if __name__ == "__main__":
     print_version()
     conn = create_conn()
 
-
     interval = getInterVal()
     if interval == 'unknown':
         print("ERROR : Interval type specified is not correct")
     else:
         print(interval)
 
-    index_list = preparePartitions()
-    # genStmnts(index_list)
+	#Prepare a dictionry of all the DDLs required for adding partitoins
+    dicDDLs = preparePartitions()
 
     #if user specified the --displayddl option
     if args.displayddl:
-        printDDLs(index_list)
+        printDDLs(dicDDLs)
 
     if args.ddlfile:
-        writeDDLfile(index_list,args.ddlfile)
+        writeDDLfile(dicDDLs,args.ddlfile)
 
     #if user specified the --tsvfile option
     # if args.tsvfile :
@@ -239,7 +203,7 @@ if __name__ == "__main__":
     #if user specified the --execute option
     if args.execute:
         print("Auto execute is Enabled")
-        executeDDLs(index_list)
+        executeDDLs(dicDDLs)
     else:
         print("Auto execute is disabled")
 
