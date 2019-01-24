@@ -2,7 +2,7 @@
 
 ##########################################################################
 # Postgres Partition maintenance Script for native partitioning in PostgreSQL
-version = 1.0
+version = 1.1
 # Author : Jobin Augustine
 ##########################################################################
 
@@ -15,8 +15,8 @@ strtTime = datetime.datetime.now()
 
 #Command Line Argument parser and help display
 parser = argparse.ArgumentParser(description='Index Analysis and Rebuild Program',
-	epilog='Example 1:\n %(prog)s -c "host=host1.hostname.com dbname=databasename user=username password=password"\n'
-    'Example 2:\n %(prog)s -c "host=host1.hostname.com dbname=databasename user=username password=password"  --tsvfile=test.tsv --ddlfile=ddl.sql --errorlog=error.log --execute --quitonerror',
+	epilog='Example 1:\n %(prog)s -c "host=host1.hostname.com dbname=databasename user=username password=password" -t public.emp -i weekly -p 5 \n'
+    'Example 2:\n %(prog)s -c "host=host1.hostname.com dbname=databasename user=username password=password" -t public.emp -i weekly -p 5 --tsvfile=test.tsv --ddlfile=ddl.sql --errorlog=error.log --execute --quitonerror',
 	formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument('-c','--connection',help="Connection string containing host, username, password etc",required=True)
 parser.add_argument('-t','--table',help="Table name in schema.tablename format",required=True)
@@ -26,7 +26,7 @@ parser.add_argument('--ddlfile',help="Generate DDL as SQL Script")
 parser.add_argument('--errorlog',help="Error log file")
 parser.add_argument('--displayddl', action='store_true', help="Display Generated DDLs on the screen")
 parser.add_argument('--quitonerror', action='store_true', help="Exit on execution Error")
-parser.add_argument('--iratio',help="Minimum Index Ratio. above which it is considered for reindexing",default=0.9)
+#parser.add_argument('--iratio',help="Minimum Index Ratio. above which it is considered for reindexing",default=0.9)
 parser.add_argument('--execute', action='store_true',help="Execute the generated DDLs against database")
 if len(sys.argv)==1:
     parser.print_help()
@@ -87,7 +87,7 @@ def preformatSQL(sql,oid,colname,coltype):
     " FOR VALUES FROM ('''||max + (interval '" + interval + "'*b)||''') TO ('''||max + (interval '" + interval + "'*(b+1))||''')' FROM " +
     "(SELECT max(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+5,10)::date) " +
     "FROM pg_catalog.pg_class c join pg_catalog.pg_inherits i on c.oid=i.inhrelid " +
-    "WHERE i.inhparent = 16556) a CROSS JOIN generate_series(0," + str(args.premake) +",1) b")
+    "WHERE i.inhparent = " + str(oid) +") a CROSS JOIN generate_series(0," + str(args.premake) +",1) b")
     return sql
 
 #Get the Indexes in a Dictionary.
@@ -109,7 +109,9 @@ def preparePartitions():
     JOIN pg_type t ON a.atttypid = t.oid
     WHERE attnum IN (SELECT unnest(partattrs) FROM pg_partitioned_table p WHERE a.attrelid = p.partrelid)"""
     cur = conn.cursor()
-    cur.execute(prepareSQL(sql))
+    sql = prepareSQL(sql)
+    cur.execute(sql)
+    print(sql)
     attr = cur.fetchone()
     oid = attr[0]
     colname = attr[1]
