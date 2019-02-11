@@ -2,7 +2,7 @@
 
 ##########################################################################
 # Postgres Partition maintenance Script for native partitioning in PostgreSQL
-version = 1.1
+version = 1.5
 # Author : Jobin Augustine
 ##########################################################################
 
@@ -26,7 +26,6 @@ parser.add_argument('--ddlfile',help="Generate DDL as SQL Script")
 parser.add_argument('--errorlog',help="Error log file")
 parser.add_argument('--displayddl', action='store_true', help="Display Generated DDLs on the screen")
 parser.add_argument('--quitonerror', action='store_true', help="Exit on execution Error")
-#parser.add_argument('--iratio',help="Minimum Index Ratio. above which it is considered for reindexing",default=0.9)
 parser.add_argument('--execute', action='store_true',help="Execute the generated DDLs against database")
 if len(sys.argv)==1:
     parser.print_help()
@@ -101,12 +100,10 @@ def preparePartitions():
        print("ERROR : Unable to locate a partitioned table \"" + str(args.table) + "\"")
        sys.exit()
     attr = cur.fetchone()
-    oid = attr[0]
-    colname = attr[1]
-    coltype = attr[2]
     #print(attr)
-    cur.close()
-    sql = preformatSQL(sql,oid,colname,coltype)
+    cur.close
+	#attr[0] = oid of table, attr[1] = column name, attr[2] = column type
+    sql = preformatSQL(sql,attr[0],attr[1],attr[2])
     print(sql)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(sql)
@@ -124,18 +121,8 @@ def writeDDLfile(index_list,ddlfile):
     fd = open(ddlfile, 'w')
     fd.truncate()
     for o in index_list:
-        fd.write("----Rebuiding "+o['index_name']+" on table "+o['nspname'] + "." + o['table_name']+"-----\n")
-        for i in range(1,len(o)-12):
-            fd.write(o['DDL'+str(i)]+";\n")
-        fd.write('\n')
+        fd.write(o['ddl']+";\n")
     fd.close()
-
-def writeIndexTSV(index_list,tsvfile):
-    print("Generating Tab Seperated File : "+ tsvfile)
-    fd1 = open(tsvfile,'w')
-    for o in index_list:
-        fd1.write(strtTime.strftime('%Y-%m-%d %H:%M:%S')+"\t"+o['nspname']+"."+o['table_name']+"."+o['index_name']+"\t"+str(o['iratio'])+"\t"+str(o['idxsize'])+"\n")
-    fd1.close()
 
 def executeDDLs(dicDDLs):
     if args.errorlog:
