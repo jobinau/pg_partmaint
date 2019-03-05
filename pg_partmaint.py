@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description='Index Analysis and Rebuild Program
 	formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument('-c','--connection',help="Connection string containing host, username, password etc",required=True)
 parser.add_argument('-t','--table',help="Table name in schema.tablename format",required=True)
-parser.add_argument('-i','--interval',help="Interval in 'yearly' | 'quarterly' | 'monthly' | 'weekly' | 'daily' | 'hourly' ",required=True)
+parser.add_argument('-i','--interval',help="Interval in [ yearly | quarterly | monthly | weekly | daily | hourly | <NUMBER> ]",required=True)
 parser.add_argument('-p','--premake',help="Premake partition",required=True)
 parser.add_argument('--ddlfile',help="Generate DDL as SQL Script")
 parser.add_argument('--errorlog',help="Error log file")
@@ -95,6 +95,7 @@ def preparePartitions():
     WHERE attnum IN (SELECT unnest(partattrs) FROM pg_partitioned_table p WHERE a.attrelid = p.partrelid)"""
     cur = conn.cursor()
     sql = prepareSQL(sql)
+    print(sql)
     cur.execute(sql)
     if cur.rowcount < 1 :
        print("ERROR : Unable to locate a partitioned table \"" + str(args.table) + "\"")
@@ -168,10 +169,6 @@ if __name__ == "__main__":
 
     if args.ddlfile:
         writeDDLfile(dicDDLs,args.ddlfile)
-
-    #if user specified the --tsvfile option
-    # if args.tsvfile :
-    #     writeIndexTSV(index_list,args.tsvfile)
 
     #if user specified the --execute option
     if args.execute:
