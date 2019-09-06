@@ -2,16 +2,13 @@
 
 ##########################################################################
 # Postgres Partition maintenance Script for native partitioning in PostgreSQL
-version = 2.0
+# Works on one table at a time. There must be atleast one pre existing partition.
+version = 3.0
 # Author : Jobin Augustine
 ##########################################################################
 
 import sys,datetime,argparse,psycopg2
 from psycopg2 import extras
-
-#Global Vars :(
-strtTime = datetime.datetime.now()
-
 
 #Command Line Argument parser and help display
 parser = argparse.ArgumentParser(description='Index Analysis and Rebuild Program',
@@ -54,91 +51,102 @@ def close_conn(conn):
     print("Closing the connection...")
     conn.close()
 
-def getInterVal():
-    #print("Getting interval");
-    inInterval = args.interval
-    if inInterval == 'yearly':
-        return '1 year'
-    elif inInterval == 'quarterly':
-        return '3 months'
-    elif inInterval == 'monthly':
-        return '1 month'
-    elif inInterval == 'weekly':
-        return '1 week'
-    elif inInterval == 'daily':
-        return '1 day'
-    elif inInterval == 'hourly':
-        return '1 hour'
-    else:
-        return inInterval
-
-def prepareSQL(sql):
-    sql = sql + " AND n.nspname = split_part('" + str(args.table) + "', '.', 1)::name AND c.relname = split_part('" + str(args.table) + "', '.', 2)::name"
-    return (sql)
-
-def preformatSQL(sql,oid,colname,coltype):
-    interval = getInterVal()
-    if interval.isdigit():
-      sql = ("SELECT 'CREATE TABLE " + str(args.table) + "_p'|| max + " + interval + "*b ||' PARTITION OF " + str(args.table) +
-      " FOR VALUES FROM ('''||max + "+ interval +" * b ||''') TO ('''||max + " + interval + " *(b+1)||''')' AS ddl FROM " +
-      "(SELECT max(left(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+5),-2)::bigint) " +
-      "FROM pg_catalog.pg_class c join pg_catalog.pg_inherits i on c.oid=i.inhrelid WHERE i.inhparent = " + str(oid) +") a CROSS JOIN generate_series(0," + str(args.premake) +",1) b")
-    else:
-      sql = ("SELECT 'CREATE TABLE " + str(args.table) + "_p'||to_char(max + (interval '" + interval + "'*b),'YYYY_MM')||' PARTITION OF " + str(args.table) +
-      " FOR VALUES FROM ('''||max + (interval '" + interval + "'*b)||''') TO ('''||max + (interval '" + interval + "'*(b+1))||''')' AS ddl FROM " +
-      "(SELECT max(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+5,10)::date) " +
-      "FROM pg_catalog.pg_class c join pg_catalog.pg_inherits i on c.oid=i.inhrelid " +
-      "WHERE i.inhparent = " + str(oid) +") a CROSS JOIN generate_series(0," + str(args.premake) +",1) b")
-    return sql
-
-#Prepare a Dictionary of DDLs for Partitioning.
-def preparePartitions():
-    print("Preparing Partitions...")
-    #Check whether table is partitioned and get details.
-    sql = """SELECT c.oid,a.attname, t.typname
-    FROM pg_attribute a
-    JOIN pg_class c ON a.attrelid = c.oid
-    JOIN pg_namespace n ON c.relnamespace = n.oid
-    JOIN pg_type t ON a.atttypid = t.oid
-    WHERE attnum IN (SELECT unnest(partattrs) FROM pg_partitioned_table p WHERE a.attrelid = p.partrelid)"""
-    cur = conn.cursor()
-    sql = prepareSQL(sql)
-    #print(sql)
-    cur.execute(sql)
-    if cur.rowcount < 1 :
-       print("ERROR : Unable to locate a partitioned table \"" + str(args.table) + "\"")
-       sys.exit()
-    attr = cur.fetchone()
-    #print(attr)
-    cur.close()
-	#attr[0] = oid of table, attr[1] = column name, attr[2] = column type
-	##Check whether there is sufficient emtpy partitions are there
-    sql = ("SELECT count(*) FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i, pg_stat_user_tables s " +
-    	"WHERE c.oid=i.inhrelid AND i.inhparent = '" + str(attr[0]) +  "' and c.oid = s.relid and s.n_live_tup = 0 ")
-    cur = conn.cursor()
-    cur.execute(sql)
-    parts = cur.fetchone()
-    cur.close()
-    print('Requested Number of Advanced Empty Partitions : ' + args.premake)
-    print('Current number of Empty Partitions : ' + str(parts[0]))
-    if parts[0] > int(args.premake) :
-        print("NOTICE : Already there are sufficient empty partitions")
-        sys.exit(1)
-
-    sql = preformatSQL(sql,attr[0],attr[1],attr[2])
-    #print(sql)
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(sql)
-    dicDDLs = cur.fetchall()
-    cur.close()
-    return dicDDLs
+############################## Class representing a Partitioned table ######################################
+class PartTable:
+    'Class representing the a Paritioned table' #this is __doc__
+    def __init__(self,name):
+        print('Initalizing the PartTab\n')
+        self.name = name
+        sql= """SELECT c.oid,a.attname, t.typname
+            FROM pg_attribute a
+            JOIN pg_class c ON a.attrelid = c.oid
+            JOIN pg_namespace n ON c.relnamespace = n.oid
+            JOIN pg_type t ON a.atttypid = t.oid
+            WHERE attnum IN (SELECT unnest(partattrs) FROM pg_partitioned_table p WHERE a.attrelid = p.partrelid)""" + \
+            " AND n.nspname = split_part('" + str(args.table) + "', '.', 1)::name AND c.relname = split_part('" + str(args.table) + "', '.', 2)::name"
+        #print(sql)
+        cur = conn.cursor()
+        cur.execute(sql)
+        if cur.rowcount < 1 :
+            print("ERROR : Unable to locate a partitioned table \"" + str(args.table) + "\"")
+            sys.exit()
+        print('Verified that table is Partitioned')
+        self.attr = cur.fetchone()
+        #attr[0] = oid of table, attr[1] = column name, attr[2] = column type
+        cur.close()
+        inInterval = args.interval
+        if inInterval == 'yearly':
+            self.interval = '1 year'
+            self.partFormat = 'YYYY'
+        elif inInterval == 'quarterly':
+            self.interval = '3 months'
+            self.partFormat = 'YYYY_MM'
+        elif inInterval == 'monthly':
+            self.interval = '1 month'
+            self.partFormat = 'YYYY_MM'
+        elif inInterval == 'weekly':
+            self.interval = '1 week'
+            self.partFormat = 'YYYY_MM_DD'
+        elif inInterval == 'daily':
+            self.interval = '1 day'
+            self.partFormat = 'YYYY_MM_DD'
+        elif inInterval == 'hourly':
+            self.interval = '1 hour'
+            self.partFormat = 'YYYY_MM_DD_HH24'
+        else:
+            self.interval = inInterval
 
 
-#print DDLs to terminal (stdout)
+    def getFreePartCount(self):   ## Get the number of empty / free partitions in the table
+        print("Checking the number of Free Partitions Available..")
+        sql = ("SELECT count(*) FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i, pg_stat_user_tables s " +
+    	"WHERE c.oid=i.inhrelid AND i.inhparent = '" + str(self.attr[0]) +  "' and c.oid = s.relid and s.n_live_tup = 0 ")
+        cur = conn.cursor()
+        cur.execute(sql)
+        parts = cur.fetchone()
+        cur.close()
+        return parts[0]
+
+    def prepareNewPartitions(self,newPartCount):
+        print('Preparing '+ str(newPartCount) + ' new partitions')
+        if self.interval.isdigit():
+            sql = ("SELECT 'CREATE TABLE " + str(args.table) + "_p'|| max + " + self.interval + "*b ||' PARTITION OF " + str(args.table) +
+            " FOR VALUES FROM ('''||max + "+ self.interval +" * b ||''') TO ('''||max + " + self.interval + " *(b+1)||''')' AS ddl FROM " +
+            "(SELECT max(left(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+5),-2)::bigint) " +
+            "FROM pg_catalog.pg_class c join pg_catalog.pg_inherits i on c.oid=i.inhrelid WHERE i.inhparent = " + str(self.attr[0]) +") a CROSS JOIN generate_series(1," + str(newPartCount) +",1) b")
+        else:
+            sql = ("SELECT 'CREATE TABLE " + str(args.table) + "_p'||to_char(max + (interval '" + self.interval + "'*b),'"+ self.partFormat +"')||' PARTITION OF " + str(args.table) +
+            " FOR VALUES FROM ('''||max + (interval '" + self.interval + "'*b)||''') TO ('''||max + (interval '" + self.interval + "'*(b+1))||''')' AS ddl FROM " +
+            "(SELECT max(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+5,10)::date) " +
+            "FROM pg_catalog.pg_class c join pg_catalog.pg_inherits i on c.oid=i.inhrelid " +
+            "WHERE i.inhparent = " + str(self.attr[0]) +") a CROSS JOIN generate_series(1," + str(newPartCount) +",1) b")
+        print(sql)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql)
+        #print('Cursor Count' + str(cur.rowcount) )
+        if cur.rowcount < 1 :
+            print("ERROR : Atleast one partiton should be existing which marks the begining of Partitions for table : \"" + str(args.table) + "\"")
+            sys.exit()
+
+        self.dicDDLs = cur.fetchall()
+        cur.close()
+
+    def getNewPartDDLs(self):
+        if len(self.dicDDLs) < 0:
+            print("No DDLs for New Partitions")
+            sys.exit()
+        return self.dicDDLs
+
+    def showname(self):
+        print('Table name is '+ self.name +'\n')
+############################# End of PartTable Class #################################################################
+
+#Generic function : print DDLs to terminal (stdout)
 def printDDLs(dicDDLs):
     for o in dicDDLs:
 		print(o['ddl']+';')
 
+#Generic functoin : print DDLs to a file
 def writeDDLfile(dicDDLs,ddlfile):
     fd = open(ddlfile, 'w')
     fd.truncate()
@@ -146,6 +154,7 @@ def writeDDLfile(dicDDLs,ddlfile):
         fd.write(o['ddl']+";\n")
     fd.close()
 
+#Generic function : Execute DDLs against database
 def executeDDLs(dicDDLs):
     if args.errorlog:
         fd = open(args.errorlog,'w')
@@ -175,12 +184,25 @@ if __name__ == "__main__":
     print_version()
     conn = create_conn()
 
-	#Prepare a dictionry of all the DDLs required for adding partitoins
-    dicDDLs = preparePartitions()
-
+    tab1 = PartTable(args.table)
+    tab1.showname()
+    freeParts = tab1.getFreePartCount()
+    
+    print('Current Number of Free Partitions in the table :'+ str(freeParts) )
+    if freeParts >= int(args.premake) :
+        print("NOTICE : Already there are sufficient empty partitions")
+        sys.exit(1)
+	
+    tab1.prepareNewPartitions(int(args.premake)-freeParts)
+    #Prepare a dictionry of all the DDLs required for adding partitoins
+    #dicDDLs = preparePartitions()
+    dicDDLs = tab1.getNewPartDDLs()
+    
+    #append special string to DDLs
     if args.append:
         for o in dicDDLs:
            o['ddl'] = o['ddl'] + ' ' + args.append
+    
     #if user specified the --displayddl option
     if args.displayddl:
         printDDLs(dicDDLs)
