@@ -3,7 +3,7 @@
 ##########################################################################
 # Postgres Partition maintenance Script for native partitioning in PostgreSQL
 # Works on one table at a time. There must be atleast one pre existing partition.
-version = 3.0
+version = 3.1
 # Author : Jobin Augustine
 ##########################################################################
 
@@ -55,7 +55,6 @@ def close_conn(conn):
 class PartTable:
     'Class representing the a Paritioned table' #this is __doc__
     def __init__(self,name):
-        print('Initalizing the PartTab\n')
         self.name = name
         sql= """SELECT c.oid,a.attname, t.typname
             FROM pg_attribute a
@@ -70,7 +69,7 @@ class PartTable:
         if cur.rowcount < 1 :
             print("ERROR : Unable to locate a partitioned table \"" + str(args.table) + "\"")
             sys.exit()
-        print('Verified that table is Partitioned')
+        print('Verified that table : ' + self.name + ' is a partitioned table')
         self.attr = cur.fetchone()
         #attr[0] = oid of table, attr[1] = column name, attr[2] = column type
         cur.close()
@@ -97,8 +96,7 @@ class PartTable:
             self.interval = inInterval
 
 
-    def getFreePartCount(self):   ## Get the number of empty / free partitions in the table
-        print("Checking the number of Free Partitions Available..")
+    def getFreePartCount(self):             ## Get the number of empty / free partitions in the table
         sql = ("SELECT count(*) FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i, pg_stat_user_tables s " +
     	"WHERE c.oid=i.inhrelid AND i.inhparent = '" + str(self.attr[0]) +  "' and c.oid = s.relid and s.n_live_tup = 0 ")
         cur = conn.cursor()
@@ -107,8 +105,8 @@ class PartTable:
         cur.close()
         return parts[0]
 
-    def prepareNewPartitions(self,newPartCount):
-        print('Preparing '+ str(newPartCount) + ' new partitions')
+    def prepareNewPartitions(self,newPartCount):        ##Prepare DDLs for 'newPartCount' number of new partitions for the table
+        print('Preparing '+ str(newPartCount) + ' more new partition(s)')
         if self.interval.isdigit():
             sql = ("SELECT 'CREATE TABLE " + str(args.table) + "_p'|| max + " + self.interval + "*b ||' PARTITION OF " + str(args.table) +
             " FOR VALUES FROM ('''||max + "+ self.interval +" * b ||''') TO ('''||max + " + self.interval + " *(b+1)||''')' AS ddl FROM " +
@@ -120,10 +118,8 @@ class PartTable:
             "(SELECT max(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+5,10)::date) " +
             "FROM pg_catalog.pg_class c join pg_catalog.pg_inherits i on c.oid=i.inhrelid " +
             "WHERE i.inhparent = " + str(self.attr[0]) +") a CROSS JOIN generate_series(1," + str(newPartCount) +",1) b")
-        print(sql)
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(sql)
-        #print('Cursor Count' + str(cur.rowcount) )
         if cur.rowcount < 1 :
             print("ERROR : Atleast one partiton should be existing which marks the begining of Partitions for table : \"" + str(args.table) + "\"")
             sys.exit()
@@ -131,14 +127,12 @@ class PartTable:
         self.dicDDLs = cur.fetchall()
         cur.close()
 
-    def getNewPartDDLs(self):
+    def getNewPartDDLs(self):           ##Get the Dictionary object which contains all the new partition definisions.
         if len(self.dicDDLs) < 0:
             print("No DDLs for New Partitions")
             sys.exit()
         return self.dicDDLs
 
-    def showname(self):
-        print('Table name is '+ self.name +'\n')
 ############################# End of PartTable Class #################################################################
 
 #Generic function : print DDLs to terminal (stdout)
@@ -185,7 +179,6 @@ if __name__ == "__main__":
     conn = create_conn()
 
     tab1 = PartTable(args.table)
-    tab1.showname()
     freeParts = tab1.getFreePartCount()
     
     print('Current Number of Free Partitions in the table :'+ str(freeParts) )
