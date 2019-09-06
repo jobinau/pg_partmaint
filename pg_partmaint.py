@@ -2,7 +2,6 @@
 
 ##########################################################################
 # Postgres Partition maintenance Script for native partitioning in PostgreSQL
-# Works on one table at a time. There must be atleast one pre existing partition.
 version = 3.1
 # Author : Jobin Augustine
 ##########################################################################

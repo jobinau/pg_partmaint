@@ -1,10 +1,16 @@
 # pg_partmaint
-Super Simple partition maintenance automation for PostgreSQL
+Super Simple automation for declerative partition maintenance for PostgreSQL
 
-## IMPORTANT :
+## Features:
+1. No metadata repo needed and no extension to be created
+2. Automatic detection of Partition boundary
+3. Yearly, Quarterly, Monthly, Weekly and Daily partitioning
+4. Generation of DDL script to file
+5. Optional, direct creation of partitions against the database
 
-Initial partitoning of the table with proper partitioning can be done manually.
-This script requires atleast one partition existing for the partitioned table so that it can understand the boundaries.
+## Requirements :
+* This script is written in python and require Psycopg2 to be present in the system.
+* There should be at least 1 partition which will be used as a reference for generating further partitions
 
 ## parameters
 -c  
