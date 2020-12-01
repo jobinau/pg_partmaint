@@ -55,6 +55,7 @@ class PartTable:
     'Class representing the a Paritioned table' #this is __doc__
     def __init__(self,name):
         self.name = name
+        #Query to identify the partitioning column and its type
         sql= """SELECT c.oid,a.attname, t.typname
             FROM pg_attribute a
             JOIN pg_class c ON a.attrelid = c.oid
@@ -62,13 +63,14 @@ class PartTable:
             JOIN pg_type t ON a.atttypid = t.oid
             WHERE attnum IN (SELECT unnest(partattrs) FROM pg_partitioned_table p WHERE a.attrelid = p.partrelid)""" + \
             " AND n.nspname = split_part('" + str(args.table) + "', '.', 1)::name AND c.relname = split_part('" + str(args.table) + "', '.', 2)::name"
-        #print(sql)
+        
+        #print('########## find the partition key ######\n'+sql+'\n###########################')
         cur = conn.cursor()
         cur.execute(sql)
         if cur.rowcount < 1 :
-            print("ERROR : Unable to locate a partitioned table \"" + str(args.table) + "\"")
+            print("ERROR : No partitioned table with name :\"" + str(args.table) + "\"")
             sys.exit()
-        print('Verified that table : ' + self.name + ' is a partitioned table')
+        #print('Verified that table : ' + self.name + ' is a partitioned table')
         self.attr = cur.fetchone()
         #attr[0] = oid of table, attr[1] = column name, attr[2] = column type
         cur.close()
@@ -96,8 +98,11 @@ class PartTable:
 
 
     def getFreePartCount(self):             ## Get the number of empty / free partitions in the table
-        sql = ("SELECT count(*) FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i, pg_stat_user_tables s " +
-    	"WHERE c.oid=i.inhrelid AND i.inhparent = '" + str(self.attr[0]) +  "' and c.oid = s.relid and s.n_live_tup = 0 ")
+        #sql = ("SELECT count(*) FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i, pg_stat_user_tables s " +
+    	#"WHERE c.oid=i.inhrelid AND i.inhparent = '" + str(self.attr[0]) +  "' and c.oid = s.relid and s.n_live_tup = 0 ")
+        sql=" SELECT COUNT(*) FROM pg_catalog.pg_inherits i JOIN pg_stat_user_tables s ON i.inhrelid = s.relid \
+            WHERE i.inhparent = '" + str(self.attr[0]) +  "' AND s.n_live_tup = 0"
+        print('########## No. of empty partitions ######\n'+sql+'\n###########################')
         cur = conn.cursor()
         cur.execute(sql)
         parts = cur.fetchone()
