@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 ##########################################################################
 # Postgres Partition maintenance Script for native partitioning in PostgreSQL
@@ -145,7 +145,7 @@ class PartTable:
 #Generic function : print DDLs to terminal (stdout)
 def printDDLs(dicDDLs):
     for o in dicDDLs:
-		print(o['ddl']+';')
+        print(o['ddl']+';')
 
 #Generic functoin : print DDLs to a file
 def writeDDLfile(dicDDLs,ddlfile):
