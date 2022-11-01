@@ -13,7 +13,7 @@ Super Simple automation for declerative partition maintenance for PostgreSQL
   For example in CentOS 7 :<br>
   ``` sudo yum install python3-psycopg2```
   or
-  ``` sudo apt insrtall python3-psycopg2```
+  ``` sudo apt-get install python3-psycopg2```
 * There should be at least 1 partition which will be used as a reference for generating further partitions
 
 ## parameters
