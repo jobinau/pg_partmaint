@@ -114,7 +114,7 @@ class PartTable:
         if self.interval.isdigit():
             sql = ("SELECT 'CREATE TABLE " + str(args.table) + "_p'|| max + " + self.interval + "*b ||' PARTITION OF " + str(args.table) +
             " FOR VALUES FROM ('''||max + "+ self.interval +" * b ||''') TO ('''||max + " + self.interval + " *(b+1)||''')' AS ddl FROM " +
-            "(SELECT max(left(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+5),-2)::bigint) " +
+            "(SELECT max(left(substring(pg_catalog.pg_get_expr(c.relpartbound, c.oid),position('TO (' IN pg_catalog.pg_get_expr(c.relpartbound, c.oid))+4),-1)::bigint) " +
             "FROM pg_catalog.pg_class c join pg_catalog.pg_inherits i on c.oid=i.inhrelid "+ 
             "WHERE i.inhparent = " + str(self.attr[0]) +" AND pg_catalog.pg_get_expr(c.relpartbound, c.oid) != 'DEFAULT') a CROSS JOIN generate_series(0," + str(newPartCount-1) +",1) b")
         else:
